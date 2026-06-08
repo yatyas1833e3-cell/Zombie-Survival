@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>4-Player Zombie Horde: Class Warfare</title>
+    <style>
+        body { margin: 0; background: #1a1a1a; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
+        #ui { margin-bottom: 10px; display: flex; gap: 10px; align-items: center; background: #2a2a2a; padding: 10px; border-radius: 8px; z-index: 10; }
+        #game-container { position: relative; display: none; }
+        canvas { background: #111; border: 4px solid #333; border-radius: 4px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        input, button { padding: 8px; border-radius: 4px; border: none; font-size: 14px; }
+        button { background: #28a745; color: white; cursor: pointer; font-weight: bold; }
+        button:hover { background: #218838; }
+        .copy-btn { background: #007bff; }
+        .copy-btn:hover { background: #0069d9; }
+        
+        /* Menu Overlays */
+        #class-select-menu { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(20, 20, 20, 0.95); border: 3px solid #00ffcc; border-radius: 8px; padding: 25px; width: 400px; text-align: center; box-shadow: 0 0 20px rgba(0,0,0,0.8); }
+        #shop-menu { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(20, 20, 20, 0.95); border: 3px solid #ffcc00; border-radius: 8px; padding: 20px; width: 320px; text-align: center; box-shadow: 0 0 20px rgba(0,0,0,0.8); }
+        
+        .menu-title { font-size: 24px; font-weight: bold; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; }
+        .class-title { color: #00ffcc; }
+        .shop-title { color: #ffcc00; }
+        
+        .class-card { background: #333; margin: 10px 0; padding: 10px; border-radius: 6px; border: 1px solid #555; text-align: left; }
+        .class-card h3 { margin: 0 0 5px 0; display: flex; justify-content: space-between; align-items: center; }
+        .class-card p { margin: 0; font-size: 12px; color: #ccc; }
+        .class-card button { background: #00ffcc; color: #111; float: right; padding: 4px 10px; }
+        .class-card button:hover { background: #00cc99; }
+
+        .shop-item { display: flex; justify-content: space-between; align-items: center; margin: 10px 0; background: #333; padding: 8px 12px; border-radius: 4px; }
+        .shop-item button { padding: 5px 10px; font-size: 12px; background: #ffcc00; color: #111; }
+        .shop-item button:hover { background: #cca300; }
+        .menu-footer { font-size: 12px; color: #aaa; margin-top: 15px; }
+    </style>
+    <script src="https://unpkg.com"></script>
+</head>
+<body>
+
+    <div id="ui">
+        <div id="host-section">
+            <span>Your ID: </span><strong id="my-id">Connecting...</strong>
+            <button class="copy-btn" onclick="copyID()">Copy ID</button>
+        </div>
+        <div id="join-section">
+            <input type="text" id="join-id" placeholder="Paste Friend's ID here...">
+            <button onclick="joinLobby()">Join Game</button>
+        </div>
+        <div id="status">Waiting for network...</div>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        
+        <!-- Class Selection Overlay -->
+        <div id="class-select-menu">
+            <div class="menu-title class-title">🛡️ Choose Your Class</div>
+            
+            <div class="class-card">
+                <h3><span>🪓 Berserker</span> <button onclick="selectClass('berserker')">Select</button></h3>
+                <p>Speedy runner. Shoots heavy high-damage plasma shells from the start.</p>
+            </div>
+            <div class="class-card">
+                <h3><span>➕ Medic</span> <button onclick="selectClass('medic')">Select</button></h3>
+                <p>The ultimate lifeline. Revives fallen teammates 3x faster than regular survivors.</p>
+            </div>
+            <div class="class-card">
+                <h3><span>🛡️ Juggernaut</span> <button onclick="selectClass('juggernaut')">Select</button></h3>
+                <p>Tanky defender. Can survive 2 zombie bites instead of being instantly downed.</p>
+            </div>
+            <div class="class-card">
+                <h3><span>⚡ Commando</span> <button onclick="selectClass('commando')">Select</button></h3>
+                <p>Gun specialist. Starts with a rapid-fire Machine Gun completely free.</p>
+            </div>
+        </div>
+
+        <!-- Weapon Shop Overlay -->
+        <div id="shop-menu">
+            <div class="menu-title shop-title">🛒 Weapon Arsenal</div>
+            <div style="margin-bottom: 10px;">Your Points: <span id="shop-points" style="color:#00ffcc; font-weight:bold;">0</span></div>
+            
+            <div class="shop-item">
+                <span>🔫 Shotgun (Spread)</span>
+                <button onclick="buyWeapon('shotgun', 150)">150 Pts</button>
+            </div>
+            <div class="shop-item">
+                <span>⚡ Machine Gun (Fast)</span>
+                <button onclick="buyWeapon('machinegun', 300)">300 Pts</button>
+            </div>
+            <div class="shop-item">
+                <span>💥 Plasma Rifle (Heavy)</span>
+                <button onclick="buyWeapon('plasma', 500)">500 Pts</button>
+            </div>
+            
+            <div class="menu-footer">Press <b style="color:#ffcc00;">E</b> to toggle arsenal display</div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const statusDiv = document.getElementById('status');
+        const shopMenu = document.getElementById('shop-menu');
+        const classMenu = document.getElementById('class-select-menu');
+        const shopPointsSpan = document.getElementById('shop-points');
+        
+        let peer = null, connections = [], isHost = false;
+
+        // Base States
+        let players = {}, zombies = [], bullets = [], score = 0, nextZombieId = 0, keys = {};
+        const localId = 'local_' + Math.floor(Math.random() * 10000);
+
+        // Wave Rules States
+        let wave = 1, zombiesRemainingToSpawn = 10, waveActive = false, waveTimerText = "", waveTimerCounter = 0;
+
+        // Weapon Configuration Profile
+        const WEAPONS = {
+            pistol:     { fireRate: 400, bulletSpeed: 9,  damage: 1, type: "single" },
+            shotgun:    { fireRate: 800, bulletSpeed: 8,  damage: 1, type: "spread" },
+            machinegun: { fireRate: 120, bulletSpeed: 11, damage: 1, type: "single" },
+            plasma:     { fireRate: 600, bulletSpeed: 7,  damage: 3, type: "heavy" }
+        };
+        let currentWeapon = "pistol";
+        let lastShotTime = 0;
+
+        // Character Classes Architecture 
+        const CLASSES = {
+            berserker:  { speed: 5.5, maxHp: 1, reviveMultiplier: 1, starterWeapon: "plasma",     color: "#ff33aa", name: "Berserker" },
+            medic:      { speed: 4.2, maxHp: 1, reviveMultiplier: 3, starterWeapon: "pistol",     color: "#00ffcc", name: "Medic" },
+            juggernaut: { speed: 3.2, maxHp: 2, reviveMultiplier: 1, starterWeapon: "pistol",     color: "#ffaa00", name: "Juggernaut" },
+            commando:   { speed: 4.2, maxHp: 1, reviveMultiplier: 1, starterWeapon: "machinegun", color: "#aaff33", name: "Commando" }
+        };
+        let myClassType = "medic"; // Default backup fallback
+
+        // Initialize Local Entity Structure
+        players[localId] = {
+            x: 400, y: 300, points: 0, weapon: "pistol", hp: 1, maxHp: 1,
+            speed: 4, reviveMultiplier: 1, className: "Survivor",
+            color: "#ffffff", dead: false, reviveProgress: 0, label: 'You'
+        };
+
+        // Network Interface Links
+        peer = new Peer();
+        peer.on('open', (id) => {
+            document.getElementById('my-id').innerText = id;
+            statusDiv.innerText = "Lobby Ready. Share your ID or join one!";
+        });
+
+        peer.on('connection', (conn) => {
+            if (connections.length >= 3) {
+                conn.on('open', () => { conn.send({ type: 'lobbyFull' }); conn.close(); });
+                return;
+            }
+            isHost = true;
+            setupConnection(conn);
+        });
+
+        function joinLobby() {
+            const targetId = document.getElementById('join-id').value.trim();
+            if (!targetId) return;
+            statusDiv.innerText = "Connecting to host...";
+            let conn = peer.connect(targetId);
+            setupConnection(conn);
+        }
+
+        function setupConnection(conn) {
+            connections.push(conn);
+            
+            conn.on('open', () => {
+                statusDiv.innerText = "Connected!";
+                document.getElementById('ui').style.display = 'none';
+                document.getElementById('game-container').style.display = 'block';
+                classMenu.style.display = 'block'; // Trigger Class Select Screen
+            });
+
+            conn.on('data', (data) => {
+                if (data.type === 'lobbyFull') {
+                    alert('Lobby full! Max 4 players.'); window.location.reload();
+                }
+                
+                if (data.type === 'joinClass') {
+                    players[data.id] = { 
+                        x: 400, y: 300, points: 0, dead: false, reviveProgress: 0, label: 'Teammate',
+                        color: data.color, weapon: data.weapon, hp: data.hp, maxHp: data.maxHp,
+                        speed: data.speed, reviveMultiplier: data.reviveMultiplier, className: data.className
+                    };
+                    if (isHost) {
+                        broadcastGameState();
+if(!waveActive && waveTimerCounter === 0) startWaveIntermission();}}if (data.type === 'move') {if (players[data.id]) { players[data.id].x = data.x; players[data.id].y = data.y; }if (isHost) broadcastGameState();}if (data.type === 'shoot') {bullets.push({ x: data.x, y: data.y, vx: data.vx, vy: data.vy, r: data.r, color: data.color, damage: data.damage });if (isHost) broadcastGameState();}if (data.type === 'buyWeapon') {if (players[data.id]) { players[data.id].points = data.points; players[data.id].weapon = data.weapon; }if (isHost) broadcastGameState();}if (data.type === 'sync' && !isHost) {zombies = data.zombies; score = data.score; wave = data.wave; waveActive = data.waveActive; waveTimerText = data.waveTimerText;Object.keys(data.players).forEach(id => {if (id !== localId) {players[id] = data.players[id]; players[id].label = 'Teammate';} else {players[localId].dead = data.players[id].dead;players[localId].reviveProgress = data.players[id].reviveProgress;players[localId].points = data.players[id].points;players[localId].hp = data.players[id].hp;}});}});conn.on('close', () => {connections = connections.filter(c => c !== conn);if (connections.length === 0 && !isHost) { alert("Host disconnected."); window.location.reload(); }});}function broadcast(msg) { connections.forEach(conn => { if (conn.open) conn.send(msg); }); }function broadcastGameState() { broadcast({ type: 'sync', players, zombies, score, wave, waveActive, waveTimerText }); }// Class Selection Injectorfunction selectClass(classKey) {myClassType = classKey;let c = CLASSES[classKey];currentWeapon = c.starterWeapon;// Load class stats into local player profileplayers[localId].color = c.color;players[localId].weapon = c.starterWeapon;players[localId].speed = c.speed;players[localId].hp = c.maxHp;players[localId].maxHp = c.maxHp;players[localId].reviveMultiplier = c.reviveMultiplier;players[localId].className = c.name;classMenu.style.display = 'none';canvas.style.display = 'block';// Broadcast final configured character sheet out to connection networkslet joinPacket = { type: 'joinClass', id: localId, color: c.color, weapon: c.starterWeapon, hp: c.maxHp, maxHp: c.maxHp, speed: c.speed, reviveMultiplier: c.reviveMultiplier, className: c.name };if (isHost) {broadcastGameState();if(wave === 1 && !waveActive) startWaveIntermission();} else {broadcast(joinPacket);}}// Window Controls Mapswindow.addEventListener('keydown', (e) => {keys[e.key] = true;if ((e.key === 'e' || e.key === 'E') && canvas.style.display === 'block') {if (shopMenu.style.display === 'block') { shopMenu.style.display = 'none'; }else { shopPointsSpan.innerText = players[localId].points; shopMenu.style.display = 'block'; }}});window.addEventListener('keyup', (e) => keys[e.key] = false);// Continuous Fire Engine Loopswindow.addEventListener('mousedown', handleShooting);setInterval(() => { if (keys['InputActive'] && currentWeapon === 'machinegun') handleShooting(); }, 30);window.addEventListener('mousemove', (e) => { keys['InputActive'] = (e.buttons === 1); });window.addEventListener('mouseup', () => keys['InputActive'] = false);function handleShooting(e) {if (players[localId].dead || canvas.style.display === 'none' || shopMenu.style.display === 'block' || classMenu.style.display === 'block') return;let now = performance.now();let wProfile = WEAPONS[currentWeapon];if (now - lastShotTime < wProfile.fireRate) return;lastShotTime = now;const rect = canvas.getBoundingClientRect();const mouseX = e ? e.clientX - rect.left : canvas.width/2;const mouseY = e ? e.clientY - rect.top : canvas.height/2;const angle = Math.atan2(mouseY - players[localId].y, mouseX - players[localId].x);let bSize = currentWeapon === 'plasma' ? 8 : 4;let bColor = currentWeapon === 'plasma' ? '#00ffcc' : '#ffcc00';if (wProfile.type === "spread") {for (let i = -1; i <= 1; i++) {let spreadAngle = angle + (i * 0.15);let bullet = { x: players[localId].x, y: players[localId].y, vx: Math.cos(spreadAngle) * wProfile.bulletSpeed, vy: Math.sin(spreadAngle) * wProfile.bulletSpeed, r: bSize, color: bColor, damage: wProfile.damage };bullets.push(bullet);if (!isHost) broadcast({ type: 'shoot', ...bullet });}} else {let bullet = { x: players[localId].x, y: players[localId].y, vx: Math.cos(angle) * wProfile.bulletSpeed, vy: Math.sin(angle) * wProfile.bulletSpeed, r: bSize, color: bColor, damage: wProfile.damage };bullets.push(bullet);if (!isHost) broadcast({ type: 'shoot', ...bullet });}if (isHost) broadcastGameState();}function buyWeapon(weaponType, cost) {if (players[localId].points >= cost) {players[localId].points -= cost;currentWeapon = weaponType;players[localId].weapon = weaponType;shopPointsSpan.innerText = players[localId].points;shopMenu.style.display = 'none';if (isHost) broadcastGameState(); else broadcast({ type: 'buyWeapon', id: localId, points: players[localId].points, weapon: weaponType });alert(Unlocked the ${weaponType.toUpperCase()}!);} else { alert("Insufficient points!"); }}function copyID() { navigator.clipboard.writeText(document.getElementById('my-id').innerText); alert("ID Copied!"); }// Wave Matrix Handlersfunction startWaveIntermission() {waveActive = false; waveTimerCounter = 10; zombies = [];let countdown = setInterval(() => {if (waveTimerCounter > 0) {waveTimerText = NEXT WAVE IN ${waveTimerCounter}... (Press E for Shop);waveTimerCounter--; broadcastGameState();} else { clearInterval(countdown); launchWave(); }}, 1000);}function launchWave() {waveActive = true; waveTimerText = WAVE ${wave} RUNNING!;zombiesRemainingToSpawn = 5 + (wave * 5); broadcastGameState();spawnZombieCycle();}function spawnZombieCycle() {if (!isHost || !waveActive || zombiesRemainingToSpawn <= 0) return;if (Object.values(players).some(p => !p.dead)) {let x, y;if (Math.random() < 0.5) { x = Math.random() < 0.5 ? 0 : canvas.width; y = Math.random() * canvas.height; }else { x = Math.random() * canvas.width; y = Math.random() < 0.5 ? 0 : canvas.height; }let zHp = wave >= 5 ? 3 : (wave >= 3 ? 2 : 1);zombies.push({ id: nextZombieId++, x, y, hp: zHp, maxHp: zHp });zombiesRemainingToSpawn--; broadcastGameState();}setTimeout(spawnZombieCycle, Math.max(300, 1500 - (wave * 100)));}// Server Dynamic Processing Loopsfunction update() {if (canvas.style.display === 'none' || classMenu.style.display === 'block') return;// 1. Position Vectors Mappingif (!players[localId].dead) {let moved = false;let pSpeed = players[localId].speed || 4;if (keys['w'] || keys['ArrowUp'])    { players[localId].y -= pSpeed; moved = true; }if (keys['s'] || keys['ArrowDown'])  { players[localId].y += pSpeed; moved = true; }if (keys['a'] || keys['ArrowLeft'])  { players[localId].x -= pSpeed; moved = true; }if (keys['d'] || keys['ArrowRight']) { players[localId].x += pSpeed; moved = true; }players[localId].x = Math.max(20, Math.min(canvas.width - 20, players[localId].x));players[localId].y = Math.max(20, Math.min(canvas.height - 20, players[localId].y));if (moved) { if (isHost) broadcastGameState(); else broadcast({ type: 'move', id: localId, x: players[localId].x, y: players[localId].y }); }}// 2. Projectile Tracking Intersectsfor (let i = bullets.length - 1; i >= 0; i--) {bullets[i].x += bullets[i].vx; bullets[i].y += bullets[i].vy;if (isHost) {for (let j = zombies.length - 1; j >= 0; j--) {if (Math.hypot(zombies[j].x - bullets[i].x, zombies[j].y - bullets[i].y) < 25) {zombies[j].hp -= bullets[i].damage; bullets.splice(i, 1);if (zombies[j].hp <= 0) {zombies.splice(j, 1); score += 20;Object.keys(players).forEach(id => players[id].points += 10);if (zombies.length === 0 && zombiesRemainingToSpawn <= 0 && waveActive) { wave++; startWaveIntermission(); }}broadcastGameState(); return;}}}if (bullets[i] && (bullets[i].x < 0 || bullets[i].x > canvas.width || bullets[i].y < 0 || bullets[i].y > canvas.height)) { bullets.splice(i, 1); }}// 3. Host Calculations Matrices (AI / Health Management / Class Modifiers)if (isHost) {let pArr = Object.keys(players);let zSpeed = 1.3 + (wave * 0.1);zombies.forEach(z => {let target = null, minDist = Infinity;pArr.forEach(id => {if (players[id].dead) return;let d = Math.hypot(players[id].x - z.x, players[id].y - z.y);if (d < minDist) { minDist = d; target = players[id]; }});if (target) {let angle = Math.atan2(target.y - z.y, target.x - z.x);z.x += Math.cos(angle) * zSpeed; z.y += Math.sin(angle) * zSpeed;// Check Zombie hit registersif (minDist < 35 && !target.dead) {target.hp--; // Deduct Class Health Layerzombies = zombies.filter(zm => zm.id !== z.id); // Remove attacking zombieif(target.hp <= 0) { target.dead = true; }}}});// Class-based Revive Proximity Tracker EnginepArr.forEach(id1 => {if (players[id1].dead) return;pArr.forEach(id2 => {if (id1 !== id2 && players[id2].dead) {if (Math.hypot(players[id1].x - players[id2].x, players[id1].y - players[id2].y) < 45) {// Add revive points multiplied by the rescuer's class speed multiplierlet speedFactor = players[id1].reviveMultiplier || 1;players[id2].reviveProgress += speedFactor;if (players[id2].reviveProgress >= 100) {players[id2].dead = false;players[id2].hp = players[id2].maxHp; // Reset health upon rescueplayers[id2].reviveProgress = 0;}}}});});broadcastGameState();}}function draw() {if (canvas.style.display === 'none' || classMenu.style.display === 'block') return;ctx.clearRect(0, 0, canvas.width, canvas.height);// Draw HUD Interface linesctx.fillStyle = '#fff'; ctx.font = 'bold 16px sans-serif'; ctx.fillText(SCORE: ${score}, 25, 35);ctx.fillStyle = '#00ffcc'; ctx.fillText(POINTS: ${players[localId].points}, 25, 60);ctx.fillStyle = '#ffcc00'; ctx.fillText(WEAPON: ${currentWeapon.toUpperCase()}, 25, 85);// Draw Central Wave Announcements Barctx.fillStyle = waveActive ? '#ff4444' : '#00ffcc'; ctx.font = 'bold 22px sans-serif'; ctx.textAlign = 'center';ctx.fillText(waveTimerText, canvas.width / 2, 40); ctx.textAlign = 'left';// Projectiles Renderingbullets.forEach(b => { ctx.beginPath(); ctx.arc(b.x, b.y, b.r || 4, 0, Math.PI * 2); ctx.fillStyle = b.color || '#ffcc00'; ctx.fill(); });// Enemies Renderingzombies.forEach(z => {ctx.beginPath(); ctx.arc(z.x, z.y, 15, 0, Math.PI * 2); ctx.fillStyle = z.hp > 1 ? '#8b0000' : '#4e8a43'; ctx.fill();if(z.maxHp > 1) {ctx.fillStyle = '#333'; ctx.fillRect(z.x - 15, z.y - 22, 30, 4);ctx.fillStyle = 'red'; ctx.fillRect(z.x - 15, z.y - 22, (z.hp / z.maxHp) * 30, 4);}});// Survivor Entities Rendering EngineObject.keys(players).forEach(id => {let p = players[id];if (p.dead) {ctx.fillStyle = 'rgba(230, 50, 50, 0.4)'; ctx.beginPath(); ctx.arc(p.x, p.y, 22, 0, Math.PI * 2); ctx.fill();ctx.fillStyle = '#ff3333'; ctx.font = 'bold 11px sans-serif'; ctx.fillText('DOWNED', p.x - 24, p.y - 25);if (p.reviveProgress > 0) {ctx.fillStyle = '#333'; ctx.fillRect(p.x - 20, p.y + 25, 40, 6);ctx.fillStyle = '#00ffcc'; ctx.fillRect(p.x - 20, p.y + 25, (p.reviveProgress / 100) * 40, 6);}return;}ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, 18, 0, Math.PI * 2); ctx.fill();// Draw Health Indicator nodes below active entitiesctx.fillStyle = '#333'; ctx.fillRect(p.x - 15, p.y + 24, 30, 4);ctx.fillStyle = '#00ffcc'; ctx.fillRect(p.x - 15, p.y + 24, (p.hp / p.maxHp) * 30, 4);ctx.fillStyle = '#fff'; ctx.font = '11px sans-serif';ctx.fillText(${p.label} [${p.className}], p.x - 25, p.y - 25);});// Defeat Wipe Trigger Screensif (Object.values(players).length > 0 && Object.values(players).every(p => p.dead)) {ctx.fillStyle = 'rgba(0,0,0,0.85)'; ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle = 'red'; ctx.font = 'bold 48px sans-serif'; ctx.textAlign = 'center';ctx.fillText('SQUAD WIPED', canvas.width/2, canvas.height/2 - 20);ctx.fillStyle = '#fff'; ctx.font = '20px sans-serif'; ctx.fillText(Your squad reached Wave ${wave}, canvas.width/2, canvas.height/2 + 30);ctx.textAlign = 'left';}}function loop() { update(); draw(); requestAnimationFrame(loop); }loop();
